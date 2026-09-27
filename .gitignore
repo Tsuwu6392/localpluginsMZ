@@ -1,0 +1,25 @@
+# --- Tool-generated (machine-local) ---
+profiles.json
+nope/
+
+# --- Node ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# --- Editors ---
+.vscode/
+.idea/
+
+# --- OS cruft (all platforms) ---
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+
+# --- Local env / secrets ---
+.env
+.env.*
+*.local
