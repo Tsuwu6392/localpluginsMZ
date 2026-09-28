@@ -1,18 +1,18 @@
 /*:
  * @target MZ
- * @plugindesc Blocks selected Control Variable operations for selected variable IDs. Portable across vanilla MZ and range-patched cores.
+ * @plugindesc (MV/MZ) Blocks selected Control Variable operations for selected variable IDs.
  * @author you
  * @help
+ * Works in both RPG Maker MV and MZ.
  * Place in js/plugins/, enable in Plugin Manager.
  *
  * LOAD ORDER: place this BELOW any other plugin that patches or rewrites
- * Game_Interpreter.prototype.command122 (Control Variables). This plugin
- * detects the current param layout once, at load time, by inspecting
- * whatever command122 already is — so it needs to see the final version.
+ * Game_Interpreter.prototype.command122 (Control Variables), so this
+ * plugin wraps the final version.
  *
  * Each rule is: "varId:op1|op2|..."
  *   ops: Set, Add, Sub, Mul, Div, Mod  (or raw numbers 0..5)
- *   Separate multiple ops on the SAME variable with "|" or a space —
+ *   Separate multiple ops on the SAME variable with "|" or a space -
  *   NOT a comma. Commas separate different rules from each other.
  *
  * Example: "6:Add, 10:Sub"
@@ -32,19 +32,11 @@
  *   ONE variable. If a ranged command's span includes a blocked variable
  *   ALONGSIDE other, non-blocked variables, the plugin cannot safely
  *   block just the one ID without also stopping the other variables in
- *   that range from updating — so the whole command is allowed to run,
+ *   that range from updating - so the whole command is allowed to run,
  *   and the blocked variable will still change. Blocking is only
  *   guaranteed when the offending command targets a single variable
  *   (start ID == end ID), which is what the normal editor UI produces
  *   when you pick one specific variable rather than a range.
- *
- * Compatibility:
- *   Detects at load time whether command122 uses vanilla MZ's
- *   [startId, endId, op, operandType, operand, ...] layout (named locals
- *   startId/endId in the function source) or some other core's layout.
- *   If detection is inconclusive, the plugin assumes the modern
- *   [startId, endId, op, ...] shape, since that's what stock MZ has used
- *   since release — this is safer than assuming a single-variable shape.
  *
  * @param rules
  * @text Rules
@@ -72,31 +64,6 @@
         const n = Number(s);
         return Number.isFinite(n) ? n : null;
     };
-
-    // ---- Feature detection ----------------------------------------------
-    // Inspect the live command122 source to figure out which param layout
-    // is in play.
-    //   Range-style (stock MZ):  params[0]=startId, params[1]=endId, params[2]=op
-    //   Single-var (e.g. MV-style ports): params[0]=varId, params[1]=op
-    // If we can't tell, default to the range-style layout — that's what
-    // unmodified MZ has always shipped with, so it's the safer guess.
-    const src = Game_Interpreter.prototype.command122.toString();
-    const HAS_START = /\bstartId\b/.test(src);
-    const HAS_END = /\bendId\b/.test(src);
-    const RANGE_LAYOUT = HAS_START && HAS_END;
-
-    if (!HAS_START && !HAS_END) {
-        console.warn(`[${PLUGIN}] Could not confirm command122's param layout ` +
-            `from source inspection. Assuming stock MZ's range-style layout ` +
-            `([startId, endId, op, ...]). If blocking doesn't work as expected, ` +
-            `check load order relative to any other plugin patching Control Variables.`);
-    }
-
-    const IDX = RANGE_LAYOUT
-        ? { start: 0, end: 1, op: 2 }
-        : { start: 0, end: 0, op: 1 };
-
-    console.log(`[${PLUGIN}] layout = ${RANGE_LAYOUT ? "range-style" : "single-variable"}`);
 
     // ---- Rule parsing ------------------------------------------------------
     /** @type {Map<number, Set<number>|null>} varId -> blocked op set (null = all ops) */
@@ -126,9 +93,11 @@
     // ---- Hook ---------------------------------------------------------------
     const _command122 = Game_Interpreter.prototype.command122;
     Game_Interpreter.prototype.command122 = function(params) {
-        const startId = params[IDX.start];
-        const endId   = RANGE_LAYOUT ? params[IDX.end] : startId;
-        const op      = params[IDX.op];
+        // MZ passes params as an argument; MV keeps them on this._params.
+        const p = params || this._params;
+        const startId = p[0];
+        const endId   = p[1];
+        const op      = p[2];
 
         for (const [varId, ops] of BLOCKED) {
             if (startId <= varId && varId <= endId) {

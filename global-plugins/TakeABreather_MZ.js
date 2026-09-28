@@ -44,7 +44,7 @@
  * @type number
  * @min 0
  * @max 100
- * @default 20
+ * @default 100
  *
  * @param CommandName
  * @text Command Name
@@ -78,7 +78,7 @@
     'use strict';
 
     var params = PluginManager.parameters('TakeABreather');
-    var HEAL_PERCENT       = Number(params['HealPercent'] || 20);
+    var HEAL_PERCENT       = Number(params['HealPercent'] || 100);
     var COMMAND_NAME       = String(params['CommandName'] || 'Take a Breather');
     var VULN_STATE_ID      = Number(params['VulnerableStateId'] || 0);
     var STATE_RATE_MULT    = Number(params['StateRateMultiplier'] || 1.5);
