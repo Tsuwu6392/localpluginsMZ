@@ -4,7 +4,7 @@
 
 /*:
  * @target MZ
- * @plugindesc Shows map name and player coordinates in the top-right corner.
+ * @plugindesc Shows the map name/id and player coordinates, anchored to a screen corner or edge.
  * @author Claude
  *
  * @param fontSize
@@ -17,6 +17,16 @@
  * @text Text Color
  * @desc CSS color string.
  * @default #ffffff
+ *
+ * @param mapLabel
+ * @text Map Label
+ * @desc What to show in front of the coordinates.
+ * @type select
+ * @option Map Name
+ * @value name
+ * @option Map ID
+ * @value id
+ * @default name
  *
  * @param xDecimals
  * @text X Decimals
@@ -72,10 +82,8 @@
  * X and Y decimal precision are configurable separately (player position
  * is fractional while moving).
  *
- * While a message window is open, the display shifts to the middle of
- * the same side (left stays left, right/center becomes right) so it
- * never overlaps the message box, then returns to its normal position
- * once the message closes.
+ * The window is inserted at the bottom of the scene's window layer, so the
+ * message window, map name window and scroll text all draw on top of it.
  *
  * No plugin commands. Just add to the plugin list and turn it on.
  */
@@ -85,37 +93,30 @@
 
     const pluginName = "CoordDisplay";
     const params = PluginManager.parameters(pluginName);
-    const fontSize = Number(params.fontSize || 18);
-    const textColor = String(params.textColor || "#ffffff");
-    const shadowColor = String(params.shadowColor || "rgba(0,0,0,0.6)");
-    const xDecimals = Number(params.xDecimals || 1);
-    const yDecimals = Number(params.yDecimals || 0);
-    const padding = Number(params.padding || 8);
-    const position = String(params.position || "topRight");
+    const fontSize     = Number(params.fontSize || 18);
+    const textColor    = String(params.textColor || "#ffffff");
+    const shadowColor  = String(params.shadowColor || "rgba(0,0,0,0.6)");
+    const mapLabelMode = String(params.mapLabel || "name");
+    const xDecimals    = Number(params.xDecimals || 1);
+    const yDecimals    = Number(params.yDecimals || 0);
+    const padding      = Number(params.padding || 8);
+    const position     = String(params.position || "topRight");
 
     // Maps each of the 8 anchor points to a horizontal/vertical zone and
     // the text alignment that reads naturally from that zone.
     const POSITION_LAYOUT = {
-        topLeft: { h: "left", v: "top", align: "left" },
-        topCenter: { h: "center", v: "top", align: "center" },
-        topRight: { h: "right", v: "top", align: "right" },
-        middleLeft: { h: "left", v: "middle", align: "left" },
-        middleRight: { h: "right", v: "middle", align: "right" },
-        bottomLeft: { h: "left", v: "bottom", align: "left" },
+        topLeft:      { h: "left",   v: "top",    align: "left"   },
+        topCenter:    { h: "center", v: "top",    align: "center" },
+        topRight:     { h: "right",  v: "top",    align: "right"  },
+        middleLeft:   { h: "left",   v: "middle", align: "left"   },
+        middleRight:  { h: "right",  v: "middle", align: "right"  },
+        bottomLeft:   { h: "left",   v: "bottom", align: "left"   },
         bottomCenter: { h: "center", v: "bottom", align: "center" },
-        bottomRight: { h: "right", v: "bottom", align: "right" }
+        bottomRight:  { h: "right",  v: "bottom", align: "right"  }
     };
 
     function getLayout() {
         return POSITION_LAYOUT[position] || POSITION_LAYOUT.topRight;
-    }
-
-    // Same horizontal side as the configured position, but vertically
-    // centered - used while a message window is open so the two never
-    // overlap. Center-anchored positions fall back to the right side.
-    function getMessageLayout() {
-        const base = getLayout();
-        return base.h === "left" ? POSITION_LAYOUT.middleLeft : POSITION_LAYOUT.middleRight;
     }
 
     function computeRect(width, height, layout) {
@@ -140,19 +141,28 @@
         return new Rectangle(x, y, width, height);
     }
 
+    function currentMapLabel() {
+        if (mapLabelMode === "id") {
+            return String($gameMap.mapId());
+        }
+        const name = $dataMap ? $dataMap.name : "";
+        return name || String($gameMap.mapId());
+    }
+
     class Window_CoordDisplay extends Window_Base {
         constructor() {
             const width = 240;
             const height = fontSize + padding * 2 + 8;
-            const layout = getLayout();
-            super(computeRect(width, height, layout));
-            this._width = width;
-            this._height = height;
-            this._normalLayout = layout;
-            this._messageLayout = getMessageLayout();
-            this._messageActive = false;
+            super(new Rectangle(0, 0, width, height));
+
+            this._layout = getLayout();
+            this._lastText = null;
+            this._lastBoxWidth = Graphics.boxWidth;
+            this._lastBoxHeight = Graphics.boxHeight;
+
             this.opacity = 0;
             this.contentsOpacity = 255;
+            this.reposition();
             this.refresh();
         }
 
@@ -160,22 +170,37 @@
             this.padding = 4;
         }
 
+        buildText() {
+            const x = $gamePlayer.x.toFixed(xDecimals);
+            const y = $gamePlayer.y.toFixed(yDecimals);
+            return `${currentMapLabel()} - ${x};${y}`;
+        }
+
+        // Re-anchors the window for the current layout / screen size.
+        reposition() {
+            const rect = computeRect(this.width, this.height, this._layout);
+            this.move(rect.x, rect.y, rect.width, rect.height);
+        }
+
         refresh() {
+            const text = this.buildText();
+            this._lastText = text;
+
             this.contents.clear();
             this.contents.fontSize = fontSize;
             this.contents.fontBold = true;
 
-            const mapId = $gameMap.mapId();
-            const x = $gamePlayer.x.toFixed(xDecimals);
-            const y = $gamePlayer.y.toFixed(yDecimals);
-            const text = `${mapId} - ${x};${y}`;
-            const align = (this._messageActive ? this._messageLayout : this._normalLayout).align;
+            const align = this._layout.align;
             const width = this.contents.width;
 
             // Shadow pass first (offset by 1px), then the main text on top.
             // Keeps the text legible over any background it happens to sit on.
-            this.contents.textColor = shadowColor;
-            this.drawText(text, 1, 1, width, align);
+            // The shadow box is inset by 1px so the offset copy is not clipped
+            // at the right/bottom edge of the contents bitmap.
+            if (shadowColor && shadowColor !== "none") {
+                this.contents.textColor = shadowColor;
+                this.drawText(text, 1, 1, width - 1, align);
+            }
 
             this.contents.textColor = textColor;
             this.drawText(text, 0, 0, width, align);
@@ -184,27 +209,16 @@
         update() {
             super.update();
 
-            const busy = $gameMessage.isBusy();
-            if (busy !== this._messageActive) {
-                this._messageActive = busy;
-                const layout = busy ? this._messageLayout : this._normalLayout;
-                const rect = computeRect(this._width, this._height, layout);
-                this.move(rect.x, rect.y, rect.width, rect.height);
-                this.refresh();
+            // Re-anchor if the game resolution changed at runtime.
+            if (Graphics.boxWidth !== this._lastBoxWidth ||
+                Graphics.boxHeight !== this._lastBoxHeight) {
+                this._lastBoxWidth = Graphics.boxWidth;
+                this._lastBoxHeight = Graphics.boxHeight;
+                this.reposition();
             }
 
-            this._lastX = this._lastX ?? null;
-            this._lastY = this._lastY ?? null;
-            this._lastMap = this._lastMap ?? null;
-
-            const curX = $gamePlayer.x.toFixed(xDecimals);
-            const curY = $gamePlayer.y.toFixed(yDecimals);
-            const curMap = $gameMap.mapId();
-
-            if (curX !== this._lastX || curY !== this._lastY || curMap !== this._lastMap) {
-                this._lastX = curX;
-                this._lastY = curY;
-                this._lastMap = curMap;
+            const text = this.buildText();
+            if (text !== this._lastText) {
                 this.refresh();
             }
         }
@@ -213,7 +227,13 @@
     const _Scene_Map_createAllWindows = Scene_Map.prototype.createAllWindows;
     Scene_Map.prototype.createAllWindows = function () {
         _Scene_Map_createAllWindows.call(this);
-        this._coordDisplayWindow = new Window_CoordDisplay();
-        this.addWindow(this._coordDisplayWindow);
+
+        const window = new Window_CoordDisplay();
+        this._coordDisplayWindow = window;
+
+        // Insert at the very bottom of the window layer instead of using
+        // addWindow(): everything else added to the map (message window,
+        // map name window, scroll text...) then draws on top of this one.
+        this._windowLayer.addChildAt(window, 0);
     };
 })();
