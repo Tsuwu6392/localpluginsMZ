@@ -33,7 +33,7 @@
  * @type number
  * @min 0
  * @max 3
- * @default 1
+ * @default 0
  *
  * @param yDecimals
  * @text Y Decimals
@@ -73,7 +73,7 @@
  * @value bottomCenter
  * @option Bottom Right
  * @value bottomRight
- * @default topRight
+ * @default bottomRight
  *
  * @help CoordDisplay.js
  *
