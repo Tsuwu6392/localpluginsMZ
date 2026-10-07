@@ -11,6 +11,8 @@
  *   Press the hotkey (default V) to open or close the menu. Esc also closes
  *   it. The game keeps running underneath, but game input is blocked while
  *   the menu is open. Two tabs: Variables and Stats.
+ *   The search box matches IDs, names and current values (type 10 to find
+ *   variable 10 and any variable currently holding 10).
  *
  * EACH ROW HAS
  *   Direction   Up / Down / Any   which kind of change the rule reacts to.
@@ -396,15 +398,20 @@
     const listItems = () => {
         const q = filterText.trim().toLowerCase();
         const out = [];
-        const pass = (key, a, b) =>
+        // Matches the ID/stat, the name/target, or the current value.
+        const pass = (key, a, b, v) =>
             (!onlyRuled || isRuled(key)) &&
-            (!q || a.toLowerCase().indexOf(q) >= 0 || b.toLowerCase().indexOf(q) >= 0);
+            (!q || a.toLowerCase().indexOf(q) >= 0 || b.toLowerCase().indexOf(q) >= 0 ||
+                String(v).toLowerCase().indexOf(q) >= 0);
+        const hasVars = typeof $gameVariables !== "undefined" && !!$gameVariables;
+        const hasActors = typeof $gameActors !== "undefined" && !!$gameActors;
 
         if (tab === "vars") {
             const names = $dataSystem ? $dataSystem.variables : [];
             for (let id = 1; id < names.length; id++) {
                 const a = String(id), b = String(names[id] || "");
-                if (pass("v:" + id, a, b)) out.push({ key: "v:" + id, a, b, id });
+                const v = hasVars ? $gameVariables.value(id) : "";
+                if (pass("v:" + id, a, b, v)) out.push({ key: "v:" + id, a, b, id });
             }
         } else {
             const scopes = GROUP_SCOPES.slice();
@@ -415,7 +422,8 @@
             for (const [who, label] of scopes) {
                 for (const stat of STATS) {
                     const key = `s:${stat}:${who}`, a = stat.toUpperCase();
-                    if (pass(key, a, label)) out.push({ key, a, b: label, stat, who });
+                    const actor = hasActors && typeof who === "number" ? $gameActors.actor(who) : null;
+                    if (pass(key, a, label, actor ? actor[stat] : "")) out.push({ key, a, b: label, stat, who });
                 }
             }
         }
@@ -508,7 +516,7 @@
         ]);
         panel.appendChild(el("div", { class: "vdm-head" }, [title, closeBtn]));
 
-        searchBox = el("input", { type: "text", class: "vdm-grow", placeholder: "Search", autocomplete: "off" });
+        searchBox = el("input", { type: "text", class: "vdm-grow", placeholder: "Search ID, name or value", autocomplete: "off" });
         searchBox.addEventListener("input", () => { filterText = searchBox.value; page = 0; render(); });
 
         onlyBox = el("input", { type: "checkbox" });
